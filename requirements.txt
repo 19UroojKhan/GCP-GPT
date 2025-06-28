@@ -141,3 +141,4 @@ wheel==0.43.0
 xlrd==2.0.1
 XlsxWriter==3.2.0
 yarl==1.9.4
+python-dotenv
