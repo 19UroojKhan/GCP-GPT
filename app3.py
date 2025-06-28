@@ -251,9 +251,18 @@ st.markdown("<p class='description'>This dashboard allows you to ask questions a
 
 
 # User interaction - Real-time chatbot
+# with st.form(key='question_form'):
+#     user_question = st.text_input("Enter your question here:", autocomplete='off')
+#     submit_button = st.form_submit_button(label='Ask')
+st.markdown("""
+    <div style='display: flex; justify-content: center; align-items: center; flex-direction: column;'>
+""", unsafe_allow_html=True)
+
 with st.form(key='question_form'):
     user_question = st.text_input("Enter your question here:", autocomplete='off')
     submit_button = st.form_submit_button(label='Ask')
+
+st.markdown("</div>", unsafe_allow_html=True)
 
 # Initialize session state for storing history
 if 'history' not in st.session_state:
