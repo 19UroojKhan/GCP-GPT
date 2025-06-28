@@ -199,7 +199,7 @@ st.markdown("""
     <style>
         body {
             font-family: 'Arial', sans-serif;
-        }
+        } .
         .main-title {
             font-size: 2.5rem;
             color: #000000;
