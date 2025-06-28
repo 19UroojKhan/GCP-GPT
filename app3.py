@@ -246,7 +246,7 @@ st.markdown("""
 
 
 # Title and description
-st.markdown("<h1 class='main-title'>GCP-GPT-Your Cloud Infrastructure Assistant</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-title'>        GCP-GPT-Your Cloud Infrastructure Assistant</h1>", unsafe_allow_html=True)
 st.markdown("<p class='description'>This dashboard allows you to ask questions and get smart insights from the cloud. Your question history will be displayed on the left-hand side.</p>", unsafe_allow_html=True)
 
 
