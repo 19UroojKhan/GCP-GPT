@@ -192,7 +192,7 @@ class PenTestVAPTAssistant:
 
 
 # Streamlit app layout
-st.set_page_config(page_title="NCRB-GPT", layout="wide")
+st.set_page_config(page_title="GCP-GPT", layout="wide")
 
 # Custom CSS for stylingststre
 st.markdown("""
