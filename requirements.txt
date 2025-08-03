@@ -13,3 +13,10 @@ langchain
 langchain-openai
 openpyxl
 pandas
+xlrd 
+pypdf
+pdfminer.six
+nltk
+python-pptx
+
+

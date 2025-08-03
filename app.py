@@ -14,7 +14,7 @@ from openai import OpenAI
 import openai
 
 # --------------- Setup ----------------
-st.set_page_config(page_title="GCP Copilot + QnA", layout="wide")
+st.set_page_config(page_title="GCP KloudCuee Copilot", layout="wide")
 load_dotenv()
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -224,7 +224,7 @@ elif page == "🤖 Ask Questions (QnA)":
         st.session_state.history.append((user_question, answer))
 
     if st.session_state.history:
-        st.sidebar.write("### 📜 Previous Questions")
+        st.sidebar.write("### Chat History")
         for q, a in st.session_state.history:
             if st.sidebar.button(q):
                 st.markdown("### 📌 Answer")
