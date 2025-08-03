@@ -1,6 +1,10 @@
 streamlit
+boto3
 openai
-pinecone
 python-dotenv
-pandas
-matplotlib
+google-cloud-asset
+google-api-core
+google-cloud-core
+google-auth
+protobuf
+pinecone

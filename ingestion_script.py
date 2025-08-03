@@ -7,7 +7,7 @@ import tempfile
 import json
 import boto3
 from modal import App, Image, Secret
-from pinecone import Pinecone, Index, ServerlessSpec
+from pinecone import Pinecone, ServerlessSpec  
 import openpyxl
 import extract_msg
 import requests
