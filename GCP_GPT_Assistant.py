@@ -1,35 +1,58 @@
 
 
+
 import streamlit as st
 import os
-import re
-from dotenv import load_dotenv
-import pandas as pd
-import streamlit as st
-from typing import List, Dict, Any
-import openai
-from pinecone import Pinecone, ServerlessSpec
 import json
-from openai import OpenAI
+import tempfile
 import time
-import matplotlib.pyplot as plt
-import base64
-# from diagram_generator import load_json_from_s3, extract_resources, draw_diagram
+from dotenv import load_dotenv
+import openai
+import boto3
+from pinecone import Pinecone, ServerlessSpec
+from openai import OpenAI
+
 # Load environment variables
 load_dotenv()
 
 # Set OpenAI API key
 openai.api_key = os.getenv("OPENAI_API_KEY")
-print("OPENAI API key:", openai.api_key)
-
-# Check and set Pinecone API key
 pinecone_api_key = os.getenv("PINECONE_API_KEY")
-if not pinecone_api_key:
-    raise ValueError("PINECONE_API_KEY is not set in the environment variables.")
-pc = Pinecone(api_key=pinecone_api_key)
-print("Pinecone API key:", pinecone_api_key)
 
-# Function to create the index with retry logic
+if not pinecone_api_key:
+    raise ValueError("PINECONE_API_KEY is not set in environment variables.")
+
+pc = Pinecone(api_key=pinecone_api_key)
+
+
+# 🔁 Step 1: Get Latest Ingested Index Name from S3 Log
+def get_latest_index_from_s3_log(bucket_name="datacrux-dev", log_key="copilot/ingestion_log.json"):
+    try:
+        s3 = boto3.client("s3")
+        tmp_log_file = tempfile.NamedTemporaryFile(delete=False, suffix=".json").name
+        s3.download_file(bucket_name, log_key, tmp_log_file)
+        with open(tmp_log_file, "r") as f:
+            ingestion_log = json.load(f)
+
+        if not ingestion_log:
+            raise ValueError("Ingestion log is empty.")
+
+        latest_file = sorted(ingestion_log.keys(), reverse=True)[0]
+        return ingestion_log[latest_file]
+    except Exception as e:
+        st.error(f"Error loading latest index from S3: {e}")
+        return None
+
+# ✅ Get index name dynamically
+index_name = get_latest_index_from_s3_log()
+if not index_name:
+    st.stop()
+
+dimension = 1536
+metric = 'euclidean'
+spec = ServerlessSpec(cloud='aws', region='us-east-1')
+
+# Create index if it doesn't exist
 def create_index_with_retry(index_name, dimension, metric, spec, retries=3, delay=5):
     for attempt in range(retries):
         try:
@@ -48,13 +71,7 @@ def create_index_with_retry(index_name, dimension, metric, spec, retries=3, dela
                 st.error(f"Failed to create index after {retries} attempts: {e}")
                 return False
 
-index_name = "swap-redis-gcp"
-dimension = 1536
-metric = 'euclidean'
-spec = ServerlessSpec(cloud='aws', region='us-east-1')
-
-# Attempt to create the index
-index_created = create_index_with_retry(index_name, dimension, metric, spec)
+create_index_with_retry(index_name, dimension, metric, spec)
 
 MODEL = "gpt-4o-mini"
 
@@ -74,19 +91,18 @@ class PenTestVAPTAssistant:
         except Exception as e:
             st.error(f"Error generating embedding: {e}")
             return None
-    
+
     def search_index(self, query, top_k=6):
         embedding = self.generate_embedding(query)
         if embedding is None:
             return None
         try:
-            query_result = self.index.query(
+            return self.index.query(
                 vector=embedding,
                 top_k=top_k,
                 include_values=False,
                 include_metadata=True
             )
-            return query_result
         except Exception as e:
             st.error(f"Error querying index: {e}")
             return None
@@ -97,8 +113,7 @@ class PenTestVAPTAssistant:
             return documents
         for result in query_result['matches'][:max_docs]:
             try:
-                document_text = result['metadata']['content']
-                documents.append(document_text)
+                documents.append(result['metadata']['content'])
             except KeyError:
                 st.error(f"Document ID '{result['id']}' not found in metadata.")
         return documents
@@ -107,6 +122,17 @@ class PenTestVAPTAssistant:
         prompt = f"Question: {query}\n\nRelevant Documents:\n"
         for doc in documents:
             prompt += f"- {doc}\n"
+        # prompt += "\nProvide a detailed answer to the question above based on the relevant documents. Include references in the format 'Reference: [source information]'."
+
+        # role_description = (
+        #     "= Your Role =\n"
+        #     "Your role is to act as a GCP Assistant and answer queries strictly based on structured JSON data.\n"
+        #     "Do not hallucinate or use external knowledge. Use only the ingested Pinecone data.\n\n"
+        #     "Example Queries:\n"
+        #     "- How many buckets exist?\n"
+        #     "- Show VMs without encryption\n"
+        #     "- Buckets with lifecycle rules\n"
+        # )
         prompt += "\nProvide a detailed answer to the question above based on the relevant documents. Include references in the format 'Reference: [source information]'." 
 
         role_description = (
@@ -152,32 +178,25 @@ class PenTestVAPTAssistant:
     "- Clarification questions if the query lacks context or specifics.\n"
 )
 
-        
         messages = [
             {"role": "system", "content": role_description},
             {"role": "user", "content": prompt}
         ]
-        
-        completion_params = {
-            "model": self.llm_model,
-            "messages": messages
-        }
-        
+
         try:
-            response = self.client.chat.completions.create(**completion_params)
+            response = self.client.chat.completions.create(
+                model=self.llm_model,
+                messages=messages
+            )
             report = response.choices[0].message.content.strip()
-            
             references = self.extract_references(report)
-            
             return report, references
         except Exception as e:
             st.error(f"An error occurred while generating the report: {e}")
             return None, []
 
     def extract_references(self, report):
-        lines = report.split("\n")
-        references = [line for line in lines if line.startswith("Reference:")]
-        return references
+        return [line for line in report.split("\n") if line.startswith("Reference:")]
 
     def query(self, query):
         query_result = self.search_index(query)
@@ -187,145 +206,72 @@ class PenTestVAPTAssistant:
         if not documents:
             st.warning("No relevant documents found.")
             return None, []
-        report, references = self.generate_report(query, documents)
-        return report, references
+        return self.generate_report(query, documents)
 
+# Streamlit UI Setup
+# st.set_page_config(page_title="GCP-GPT", layout="wide")
 
-# Streamlit app layout
-st.set_page_config(page_title="GCP-GPT", layout="wide")
-
-# Custom CSS for stylingststre
-st.markdown("""
+# Styling
+st.markdown(f"""
     <style>
-        body {
-            font-family: 'Arial', sans-serif;
-        } .
-        .main-title {
-            font-size: 2.5rem;
-            color: #000000;
-            text-align: center;
-            margin-bottom: 25px;
-        }
-        .description {
-            font-size: 1.2rem;
-            color: #333;
-            text-align: center;
-            margin-bottom: 50px;
-        }
-        .sidebar .sidebar-content {
-            background-color: #F8F8FF;
-        }
-        .dataframe {
-            margin: 20px;
-            border-collapse: collapse;
-        }
-        .dataframe th {
-            background-color: #4B0082;
-            color: white;
-        }
-        .dataframe td, .dataframe th {
-            padding: 10px;
-            border: 1px solid #ddd;
-        }
-        .expander-header {
-            font-size: 1.5rem;
-            color: #4B0082;
-        }
-        .expander-content {
-            font-size: 1.1rem;
-            color: #555;
-        }
-        .expander-content p {
-            margin: 10px 0;
-        }
-        input[type="text"] {
-            autocomplete: off;
-        }
+        body {{ font-family: 'Arial'; }}
+        .main-title {{ font-size: 2.5rem; color: #000; text-align: center; margin-bottom: 25px; }}
+        .description {{ font-size: 1.2rem; color: #333; text-align: center; margin-bottom: 50px; }}
     </style>
 """, unsafe_allow_html=True)
 
+# Title
+st.markdown("<h1 class='main-title'>GCP-GPT</h1>", unsafe_allow_html=True)
+st.markdown("<p class='description'>Ask questions about your GCP infrastructure — answers are based on latest ingested JSON from Pinecone.</p>", unsafe_allow_html=True)
 
-# Title and description
-st.markdown("<h1 class='main-title'> GCP-GPT : Your Cloud Infrastructure Assistant</h1>", unsafe_allow_html=True)
-st.markdown("<p class='description'>This dashboard allows you to ask questions and get smart insights from the cloud. Your question history will be displayed on the left-hand side.</p>", unsafe_allow_html=True)
+# Show latest index info
+st.sidebar.success(f"✅ Using Pinecone Index: `{index_name}`")
 
-
-# User interaction - Real-time chatbot
-# with st.form(key='question_form'):
-#     user_question = st.text_input("Enter your question here:", autocomplete='off')
-#     submit_button = st.form_submit_button(label='Ask')
-st.markdown("""
-    <div style='display: flex; justify-content: center; align-items: center; flex-direction: column;'>
-""", unsafe_allow_html=True)
-
+# Ask question
 with st.form(key='question_form'):
     user_question = st.text_input("Enter your question here:", autocomplete='off')
     submit_button = st.form_submit_button(label='Ask')
 
-st.markdown("</div>", unsafe_allow_html=True)
-
-# Initialize session state for storing history
+# History state
 if 'history' not in st.session_state:
     st.session_state.history = []
 
-# Create the PenTestVAPTAssistant instance
 assistant = PenTestVAPTAssistant(index_name=index_name)
 
-# Placeholder for the answer
 answer_placeholder = st.empty()
 references_placeholder = st.empty()
-chart_placeholder = st.empty()
 
-if submit_button:
-    if user_question.strip() != "":
-        # Clear the previous answer and chart
-        answer_placeholder.empty()
-        references_placeholder.empty()
-        chart_placeholder.empty()
+if submit_button and user_question.strip():
+    answer_placeholder.empty()
+    references_placeholder.empty()
 
-        report, references = assistant.query(user_question)
-        if report:
-            st.session_state.history.append({
-                "question": user_question,
-                "answer": report,
-                "references": references
-            })
-            
-            # Display the new answer
-            answer_placeholder.markdown(f"**Answer:**")
-            lines = report.split("\n")
-            print(lines)
-            for line in lines:
-                if "[\text" in line:  # Check if the line contains LaTeX
-                    st.latex(line)
-                else:
-                    st.markdown(line)
-            # Display references if any
-            if references:
-                references_placeholder.markdown("**References:**")
-                for ref in references:
-                    references_placeholder.markdown(f"- {ref}")
+    report, references = assistant.query(user_question)
+    if report:
+        st.session_state.history.append({
+            "question": user_question,
+            "answer": report,
+            "references": references
+        })
 
-            # Display a sample chart
-            
-        else:
-            st.write("No response generated.")
+        answer_placeholder.markdown("**Answer:**")
+        for line in report.split("\n"):
+            st.markdown(line)
+
+        if references:
+            references_placeholder.markdown("**References:**")
+            for ref in references:
+                references_placeholder.markdown(f"- {ref}")
     else:
-        st.write("Please enter a question.")
+        st.write("No response generated.")
 
-# Display question history only if there are questions in the history
+# Show history
 if st.session_state.history:
     st.sidebar.write("### Question History")
     for i, entry in enumerate(st.session_state.history):
         if st.sidebar.button(entry['question'], key=f"history_{i}"):
-            user_question = entry['question']
-            answer_placeholder.empty()
             answer_placeholder.markdown(f"**Answer:** {entry['answer']}")
-            references_placeholder.empty()
             if entry['references']:
                 references_placeholder.markdown("**References:**")
                 for ref in entry['references']:
                     references_placeholder.markdown(f"- {ref}")
-            chart_placeholder.empty()
 
-            
