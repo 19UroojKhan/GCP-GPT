@@ -8,3 +8,8 @@ google-cloud-core
 google-auth
 protobuf
 pinecone
+extract_msg
+langchain
+langchain-openai
+openpyxl
+pandas
