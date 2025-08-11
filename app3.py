@@ -145,7 +145,7 @@ if page == "🔁 GCP Inventory + Ingestion":
     st.title("GCP CatalystOps AutoPilot")
     st.markdown("""
  **CatalystOps** helps you **discover, manage, and provision GCP resources effortlessly**.  
- Ingest your cloud inventory, get **AI-powered insights**, and generate **ready-to-generate Terraform code** ~ all in one place.  
+ Ingest your cloud inventory, get **AI-powered insights**, and generate ** Terraform code** ~ all in one place.  
 """)
 
     ingestion_log = load_ingestion_log()
