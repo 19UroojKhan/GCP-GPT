@@ -6,6 +6,7 @@ import re
 import logging
 from datetime import datetime
 from typing import Dict, Optional
+from login import require_login
 
 import boto3
 from dotenv import load_dotenv
@@ -30,6 +31,11 @@ LOG.addHandler(handler)
 
 # Streamlit page config
 st.set_page_config(page_title="GCP Copilot + QnA", layout="wide")
+
+# ---- Enforce authentication before loading the rest of the app ----
+authenticated, _auth = require_login()
+if not authenticated:
+    st.stop()
 
 # Required environment variables
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -395,5 +401,4 @@ Constraints:
                     st.success("Terraform code generated with best practices.")
                 except Exception as e:
                     st.error(f"❌ Error generating Terraform code: {e}")
-
 
