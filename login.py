@@ -12,7 +12,7 @@ def require_login():
     config = {
         "credentials": {
             "usernames": {
-                "admin": {
+                "csadmin": {
                     "name": "csadmin",
                     "password": "u*K@19#"
                 },
