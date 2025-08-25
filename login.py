@@ -13,8 +13,8 @@ def require_login():
         "credentials": {
             "usernames": {
                 "admin": {
-                    "name": "admin",
-                    "password": "abc@19"
+                    "name": "csadmin",
+                    "password": "u*K@19#"
                 },
                 "rbriggs": {
                     "name": "Rebecca Briggs",
